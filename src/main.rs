@@ -71,8 +71,35 @@ struct BaseItem {
     drop_level: u8,
 }
 
+struct NewBaseItem {
+    id: u16,
+    base_id: u16,
+    possible_modifiers: Vec<NewModifier>,
+}
+
+enum Affix {
+    Prefix,
+    Suffix,
+    Socket,
+    Corrupted,
+}
+
+struct NewModifier {
+    id: u16,
+    group_id: u16,
+    affix: Affix,
+    item_level: u16,
+    weighting: u16,
+    n_values: Option<Vec<Vec<f32>>>,
+}
+
+// #[derive(Debug)]
+// struct CraftedItem {
+//     prefixes: Vec<>
+// }
+
 fn main() {
-    let file = File::open("formatted_poe.json").unwrap();
+    let file = File::open("poec_data.json").unwrap();
 
     let db: Database = serde_json::from_reader(file).unwrap();
 
