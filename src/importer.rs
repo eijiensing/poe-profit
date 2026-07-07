@@ -1,8 +1,8 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs::File;
+use std::{fs::File, path::Path};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Tag {
     Abyss4AdditionalChance,
     AbyssAdditionalChance,
@@ -487,7 +487,7 @@ pub enum Tag {
     YouCannotBeHindered,
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub enum Affix {
     Prefix,
     Suffix,
@@ -508,64 +508,95 @@ impl From<&str> for Affix {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ModifierGroup {
     Base,
     Desecrated,
     Essence,
     Unknown,
 }
-#[derive(Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ModifierId(pub u16);
-#[derive(Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct BaseId(pub u16);
-#[derive(Debug)]
-pub struct ItemId(pub u16);
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct BaseItemId(pub u16);
 
-#[derive(Debug)]
-pub struct NewBaseItem {
-    pub id: ItemId,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BaseItem {
+    pub id: BaseItemId,
     pub base_id: BaseId,
+    pub modifier_definitions: Vec<ModifierDefinition>,
     pub name: String,
-    pub modifiers: Vec<BaseModifier>,
+    pub base_name: String,
+    pub is_jewellery: bool,
+    pub is_martial: bool,
 }
 
-#[derive(Debug)]
-pub struct BaseModifier {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModifierDefinition {
     pub id: ModifierId,
+    pub name: String,
     pub group: ModifierGroup,
     pub affix: Affix,
     pub tags: Vec<Tag>,
     pub tiers: Vec<ModifierTier>,
 }
 
-#[derive(Debug)]
-pub struct ModifierTier {
-    pub item_level: u8,
-    pub weighting: u16,
-    pub values: Vec<Vec<f32>>,
+#[derive(Debug, Serialize, Deserialize)]
+pub enum RollableValue {
+    Between((f32, f32)),
+    Fixed(f32),
 }
 
-// --- The Importer Function ---
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModifierTier {
+    pub tier: u8,
+    pub item_level: u8,
+    pub weighting: u16,
+    pub values: Vec<RollableValue>,
+}
 
-/// Reads the file once, extracts EVERY base item into memory,
-/// and immediately drops the raw JSON tree.
-pub fn load_all_items(path: &str) -> Result<Vec<NewBaseItem>, Box<dyn std::error::Error>> {
+#[derive(Serialize, Deserialize)]
+pub struct PoeData {
+    pub base_items: Vec<BaseItem>,
+}
+
+pub fn load_poe_data_cached(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
+    let bin_path = Path::new(path).with_extension("bin");
+
+    if bin_path.exists() {
+        let bytes = std::fs::read(&bin_path)?;
+        let data = postcard::from_bytes(&bytes)?;
+        return Ok(data);
+    }
+
+    let data = load_poe_data(path)?;
+
+    let bytes = postcard::to_allocvec(&data)?;
+    std::fs::write(&bin_path, bytes)?;
+
+    Ok(data)
+}
+
+fn load_poe_data(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
     let root: Value = serde_json::from_reader(file)?;
 
-    let mut extracted_items = Vec::new();
+    let mut base_items = Vec::new();
 
-    let bitems = match root.pointer("/bitems/seq").and_then(|v| v.as_array()) {
-        Some(arr) => arr,
-        None => return Ok(extracted_items),
-    };
+    let bitems = root
+        .pointer("/bitems/seq")
+        .and_then(|v| v.as_array())
+        .expect("/bitems/seq to exist and be an array.");
 
-    // Process every single item in the array
+    let bases = root
+        .pointer("/bases/seq")
+        .and_then(|v| v.as_array())
+        .expect("/bases/seq to exist and be an array.");
+
     for bitem in bitems {
-        let name = bitem["name_bitem"].as_str().unwrap_or("");
-
-        let id = ItemId(parse_u16(&bitem["id_bitem"]).unwrap_or(0));
+        let id = BaseItemId(parse_u16(&bitem["id_bitem"]).unwrap_or(0));
         let base_id = BaseId(parse_u16(&bitem["id_base"]).unwrap_or(0));
         let base_id_str = base_id.0.to_string();
 
@@ -583,20 +614,28 @@ pub fn load_all_items(path: &str) -> Result<Vec<NewBaseItem>, Box<dyn std::error
             }
         }
 
-        extracted_items.push(NewBaseItem {
-            id,
-            base_id,
-            name: name.to_string(),
-            modifiers,
-        });
+        if let Some(base) = bases
+            .iter()
+            .find(|b| b["id_base"].as_str().unwrap() == bitem["id_base"].as_str().unwrap())
+        {
+            base_items.push(BaseItem {
+                id,
+                base_id,
+                modifier_definitions: modifiers,
+                name: bitem["name_bitem"].as_str().unwrap().to_string(),
+                base_name: base["name_base"].as_str().unwrap().to_string(),
+                is_jewellery: base["is_jewellery"] == "1",
+                is_martial: base["is_martial"] == "1",
+            });
+        }
     }
 
-    Ok(extracted_items)
+    Ok(PoeData { base_items })
 }
 
 // --- Internal Helper Functions ---
 
-fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<BaseModifier> {
+fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<ModifierDefinition> {
     let mod_seq = root.pointer("/modifiers/seq")?.as_array()?;
     let mod_data = mod_seq.iter().find(|m| {
         parse_u16(&m["id_modifier"]).map(|id| id.to_string()) == Some(mod_id_str.to_string())
@@ -604,6 +643,7 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<B
 
     let id = ModifierId(mod_id_str.parse().ok()?);
     let affix = Affix::from(mod_data["affix"].as_str().unwrap_or(""));
+    let name = mod_data["name_modifier"].as_str().unwrap().to_string();
 
     let mgroup_str = mod_data["id_mgroup"].as_str().unwrap();
 
@@ -623,14 +663,22 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<B
         .pointer(&format!("/tiers/{}/{}", mod_id_str, base_id_str))
         .and_then(|v| v.as_array())
     {
-        for tier_val in tier_list {
+        for (i, tier_val) in tier_list.iter().enumerate() {
             let item_level = parse_u16(&tier_val["ilvl"]).unwrap_or(0) as u8;
             let weighting = parse_u16(&tier_val["weighting"]).unwrap_or(0);
 
-            let mut values = Vec::new();
+            let mut values = Vec::<RollableValue>::new();
             if let Some(nval_str) = tier_val["nvalues"].as_str() {
-                if let Ok(parsed) = serde_json::from_str::<Vec<Vec<f32>>>(nval_str) {
-                    values = parsed;
+                if let Ok(parsed) = serde_json::from_str::<Vec<Value>>(nval_str) {
+                    for v in parsed.into_iter() {
+                        if let Ok(fixed) = serde_json::from_value::<f32>(v.clone()) {
+                            values.push(RollableValue::Fixed(fixed))
+                        } else if let Ok(range) = serde_json::from_value::<(f32, f32)>(v) {
+                            values.push(RollableValue::Between(range))
+                        } else {
+                            // bad!
+                        }
+                    }
                 }
             }
 
@@ -638,16 +686,18 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<B
                 item_level,
                 weighting,
                 values,
+                tier: (tier_list.len() - i) as u8,
             });
         }
     }
 
-    Some(BaseModifier {
+    Some(ModifierDefinition {
         id,
         group,
         affix,
         tiers,
         tags,
+        name,
     })
 }
 
