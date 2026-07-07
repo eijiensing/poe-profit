@@ -1,8 +1,8 @@
+use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
 
-// --- Your Target Domain Structs ---
-
+#[derive(Debug, Deserialize)]
 pub enum Tag {
     Abyss4AdditionalChance,
     AbyssAdditionalChance,
@@ -499,10 +499,10 @@ pub enum Affix {
 impl From<&str> for Affix {
     fn from(s: &str) -> Self {
         match s {
-            "Prefix" => Affix::Prefix,
-            "Suffix" => Affix::Suffix,
-            "Socket" => Affix::Socket,
-            "Corrupted" => Affix::Corrupted,
+            "prefix" => Affix::Prefix,
+            "suffix" => Affix::Suffix,
+            "socket" => Affix::Socket,
+            "corrupted" => Affix::Corrupted,
             other => Affix::Unknown(other.to_string()),
         }
     }
@@ -535,6 +535,7 @@ pub struct BaseModifier {
     pub id: ModifierId,
     pub group: ModifierGroup,
     pub affix: Affix,
+    pub tags: Vec<Tag>,
     pub tiers: Vec<ModifierTier>,
 }
 
@@ -604,14 +605,18 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<B
     let id = ModifierId(mod_id_str.parse().ok()?);
     let affix = Affix::from(mod_data["affix"].as_str().unwrap_or(""));
 
-    let group_str = mod_data["modgroups"].as_str().unwrap_or("[]");
-    let group = if group_str.contains("Essence") {
-        ModifierGroup::Essence
-    } else if group_str.contains("Desecrated") {
+    let mgroup_str = mod_data["id_mgroup"].as_str().unwrap();
+
+    let group = if mgroup_str == "10" {
         ModifierGroup::Desecrated
+    } else if mgroup_str == "13" {
+        ModifierGroup::Essence
     } else {
         ModifierGroup::Base
     };
+
+    let tags: Vec<Tag> =
+        serde_json::from_str(mod_data["modgroups"].as_str().unwrap_or("[]")).unwrap_or_default();
 
     let mut tiers = Vec::new();
     if let Some(tier_list) = root
@@ -642,6 +647,7 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<B
         group,
         affix,
         tiers,
+        tags,
     })
 }
 
