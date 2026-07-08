@@ -531,6 +531,18 @@ pub struct BaseItem {
     pub base_name: String,
     pub is_jewellery: bool,
     pub is_martial: bool,
+
+    pub item_group_name: String,
+    pub max_affix: u16,
+    pub is_rare: bool,
+    pub is_influenced: bool,
+    pub is_fossil: bool,
+    pub is_ess: bool,
+    pub is_craftable: bool,
+    pub is_notable: bool,
+    pub is_catalyst: bool,
+    pub has_items: bool,
+    pub max_sockets: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -595,6 +607,11 @@ fn load_poe_data(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
         .and_then(|v| v.as_array())
         .expect("/bases/seq to exist and be an array.");
 
+    let bgroups = root
+        .pointer("/bgroups/seq")
+        .and_then(|v| v.as_array())
+        .expect("/bgroups/seq to exist and be an array.");
+
     for bitem in bitems {
         let id = BaseItemId(parse_u16(&bitem["id_bitem"]).unwrap_or(0));
         let base_id = BaseId(parse_u16(&bitem["id_base"]).unwrap_or(0));
@@ -618,15 +635,31 @@ fn load_poe_data(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
             .iter()
             .find(|b| b["id_base"].as_str().unwrap() == bitem["id_base"].as_str().unwrap())
         {
-            base_items.push(BaseItem {
-                id,
-                base_id,
-                modifier_definitions: modifiers,
-                name: bitem["name_bitem"].as_str().unwrap().to_string(),
-                base_name: base["name_base"].as_str().unwrap().to_string(),
-                is_jewellery: base["is_jewellery"] == "1",
-                is_martial: base["is_martial"] == "1",
-            });
+            if let Some(base_group) = bgroups
+                .iter()
+                .find(|bg| bg["id_bgroup"].as_str().unwrap() == base["id_bgroup"])
+            {
+                base_items.push(BaseItem {
+                    id,
+                    base_id,
+                    modifier_definitions: modifiers,
+                    name: bitem["name_bitem"].as_str().unwrap().to_string(),
+                    base_name: base["name_base"].as_str().unwrap().to_string(),
+                    is_jewellery: base["is_jewellery"] == "1",
+                    is_martial: base["is_martial"] == "1",
+                    item_group_name: base_group["name_bgroup"].as_str().unwrap().to_string(),
+                    max_affix: parse_u16(&base_group["max_affix"]).unwrap_or(0),
+                    is_rare: base_group["is_rare"] == "1",
+                    is_influenced: base_group["is_influenced"] == "1",
+                    is_fossil: base_group["is_fossil"] == "1",
+                    is_ess: base_group["is_ess"] == "1",
+                    is_craftable: base_group["is_craftable"] == "1",
+                    is_notable: base_group["is_notable"] == "1",
+                    is_catalyst: base_group["is_catalyst"] == "1",
+                    has_items: base_group["has_items"] == "1",
+                    max_sockets: parse_u16(&base_group["max_sockets"]).unwrap_or(0),
+                });
+            }
         }
     }
 
