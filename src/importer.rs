@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs::File, path::Path};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Tag {
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
+pub enum ModifierFamily {
     Abyss4AdditionalChance,
     AbyssAdditionalChance,
     AbyssDepthsChance,
@@ -509,7 +509,7 @@ impl From<&str> for Affix {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ModifierGroup {
+pub enum ModifierType {
     Base,
     Desecrated,
     Essence,
@@ -521,6 +521,8 @@ pub struct ModifierId(pub u16);
 pub struct BaseId(pub u16);
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct BaseItemId(pub u16);
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct SocketableId(pub u16);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BaseItem {
@@ -532,27 +534,93 @@ pub struct BaseItem {
     pub is_jewellery: bool,
     pub is_martial: bool,
 
-    pub item_group_name: String,
-    pub max_affix: u16,
-    pub is_rare: bool,
-    pub is_influenced: bool,
-    pub is_fossil: bool,
-    pub is_ess: bool,
-    pub is_craftable: bool,
-    pub is_notable: bool,
-    pub is_catalyst: bool,
-    pub has_items: bool,
-    pub max_sockets: u16,
+    // TODO
+    // pub socketables: Vec<Socketable>
+
+    // Base group stuff
+    pub item_group_name: String, // "Body Armours", "Gloves", etc.
+    pub max_affix: u16,          // Maximum number of explicit affixes
+    pub can_use_essence: bool,   // Essences can be applied to this item group.
+    pub can_use_catalyst: bool,  // Catalysts can be applied.
+    pub max_sockets: u16,        // Maximum socket count.
+
+    // useless stuff
+    pub can_spawn_rare: bool, // Whether this item group can naturally exist as Rare.
+
+    pub is_influenced: bool, // Legacy PoE1 flag.
+    pub is_fossil: bool,     // Legacy PoE1 flag.
+    pub is_craftable: bool,  // Legacy PoE1 flag.
+    pub has_items: bool,     // idk
+    pub is_notable: bool,    // maybe legacy?
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModifierDefinition {
     pub id: ModifierId,
     pub name: String,
-    pub group: ModifierGroup,
+    pub modifier_type: ModifierType,
     pub affix: Affix,
-    pub tags: Vec<Tag>,
+    pub modifier_families: Vec<ModifierFamily>,
+    pub modifier_tags: Vec<ModifierTag>,
     pub tiers: Vec<ModifierTier>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierTag {
+    Ailment,
+    AmanamuMod,
+    Armour,
+    Attack,
+    Attribute,
+    Aura,
+    Bleed,
+    Caster,
+    CasterCritical,
+    CasterSpeed,
+    JewelleryAttack,
+    JewelleryAttribute,
+    JewelleryCaster,
+    JewelleryDefense,
+    JewelleryElemental,
+    JewelleryResistance,
+    JewelleryResource,
+    Chaos,
+    ChaosDamage,
+    ChaosResistance,
+    Cold,
+    ColdResistance,
+    Critical,
+    Curse,
+    Damage,
+    Defences,
+    Drop,
+    Elemental,
+    ElementalResistance,
+    EnergyShield,
+    Evasion,
+    Fire,
+    FireResistance,
+    Gem,
+    GemLevel,
+    HasAttackMod,
+    KurgalMod,
+    Life,
+    FlatLifeRegen,
+    Lightning,
+    LightningResistance,
+    Mana,
+    Minion,
+    MinionDamage,
+    MinionResistance,
+    MinionSpeed,
+    Physical,
+    PhysicalDamage,
+    Poison,
+    Resistance,
+    RunicWard,
+    Speed,
+    UlamanMod,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -567,6 +635,19 @@ pub struct ModifierTier {
     pub item_level: u8,
     pub weighting: u16,
     pub values: Vec<RollableValue>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum SocketType {
+    Rune,
+    SoulCore,
+    Talisman,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Socketable {
+    pub id: SocketableId,
+    pub name: String, // TODO: info
 }
 
 #[derive(Serialize, Deserialize)]
@@ -649,13 +730,13 @@ fn load_poe_data(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
                     is_martial: base["is_martial"] == "1",
                     item_group_name: base_group["name_bgroup"].as_str().unwrap().to_string(),
                     max_affix: parse_u16(&base_group["max_affix"]).unwrap_or(0),
-                    is_rare: base_group["is_rare"] == "1",
+                    can_spawn_rare: base_group["is_rare"] == "1",
                     is_influenced: base_group["is_influenced"] == "1",
                     is_fossil: base_group["is_fossil"] == "1",
-                    is_ess: base_group["is_ess"] == "1",
+                    can_use_essence: base_group["is_ess"] == "1",
                     is_craftable: base_group["is_craftable"] == "1",
                     is_notable: base_group["is_notable"] == "1",
-                    is_catalyst: base_group["is_catalyst"] == "1",
+                    can_use_catalyst: base_group["is_catalyst"] == "1",
                     has_items: base_group["has_items"] == "1",
                     max_sockets: parse_u16(&base_group["max_sockets"]).unwrap_or(0),
                 });
@@ -670,6 +751,12 @@ fn load_poe_data(path: &str) -> Result<PoeData, Box<dyn std::error::Error>> {
 
 fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<ModifierDefinition> {
     let mod_seq = root.pointer("/modifiers/seq")?.as_array()?;
+
+    let mtypes = root
+        .pointer("/mtypes/seq")
+        .and_then(|v| v.as_array())
+        .expect("/mtypes/seq to exist and be an array.");
+
     let mod_data = mod_seq.iter().find(|m| {
         parse_u16(&m["id_modifier"]).map(|id| id.to_string()) == Some(mod_id_str.to_string())
     })?;
@@ -680,15 +767,39 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<M
 
     let mgroup_str = mod_data["id_mgroup"].as_str().unwrap();
 
+    let mod_types = mod_data["mtypes"].as_str().map(|s| {
+        s.split('|')
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    });
+
+    let modifier_tags = mod_types
+        .map(|mtttt| {
+            mtttt
+                .iter()
+                .map(|mt| {
+                    let mod_type_data = mtypes
+                        .iter()
+                        .find(|modt| modt["id_mtype"].as_str().unwrap() == mt)
+                        .unwrap();
+                    let tag: ModifierTag =
+                        serde_json::from_value(mod_type_data["poedb_id"].clone()).unwrap();
+                    tag
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     let group = if mgroup_str == "10" {
-        ModifierGroup::Desecrated
+        ModifierType::Desecrated
     } else if mgroup_str == "13" {
-        ModifierGroup::Essence
+        ModifierType::Essence
     } else {
-        ModifierGroup::Base
+        ModifierType::Base
     };
 
-    let tags: Vec<Tag> =
+    let modifier_families: Vec<ModifierFamily> =
         serde_json::from_str(mod_data["modgroups"].as_str().unwrap_or("[]")).unwrap_or_default();
 
     let mut tiers = Vec::new();
@@ -726,11 +837,12 @@ fn build_modifier(root: &Value, mod_id_str: &str, base_id_str: &str) -> Option<M
 
     Some(ModifierDefinition {
         id,
-        group,
+        modifier_type: group,
         affix,
         tiers,
-        tags,
+        modifier_families,
         name,
+        modifier_tags,
     })
 }
 
