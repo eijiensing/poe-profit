@@ -53,25 +53,18 @@ fn main() {
         },
     );
 
-    println!(
-        "{:#?}",
-        next_states
-            .iter()
-            .filter_map(|ns| {
-                if ns.probability > 4f64 {
-                    return Some((
-                        ns.probability,
-                        vile_robe
-                            .modifier_definitions
-                            .iter()
-                            .find(|md| md.id == ns.modifiers.first().unwrap().modifier_id)
-                            .unwrap()
-                            .name
-                            .clone(),
-                    ));
-                }
-                None
-            })
-            .collect::<Vec<_>>()
-    );
+    for ns in next_states {
+        println!(
+            "{:.2}% | Tier {} | {}",
+            ns.probability,
+            ns.modifiers.first().unwrap().tier,
+            vile_robe
+                .modifier_definitions
+                .iter()
+                .find(|md| md.id == ns.modifiers.first().unwrap().modifier_id)
+                .unwrap()
+                .name
+                .clone(),
+        )
+    }
 }
