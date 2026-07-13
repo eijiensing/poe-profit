@@ -64,7 +64,7 @@ pub fn possible_next_states(
             .unwrap();
         if matches!(md.affix, Affix::Prefix) {
             return (acc.0 + 1, acc.1);
-        } else if matches!(md.affix, Affix::Prefix) {
+        } else if matches!(md.affix, Affix::Suffix) {
             return (acc.0, acc.1 + 1);
         }
 
@@ -74,13 +74,31 @@ pub fn possible_next_states(
     let possible_modifiers = base_item
         .modifier_definitions
         .iter()
-        .flat_map(|md| md.tiers.iter().map(move |t| (md, t)))
-        .filter_map(|(md, t)| {
-            if t.item_level < minimum_modifier_level || t.item_level > start_state.item_level {
-                // TODO: keep atleast one in family (highest tier)
-                return None;
+        .flat_map(|md| {
+            let mut eligible_tiers: Vec<_> = md
+                .tiers
+                .iter()
+                .filter(|t| {
+                    t.item_level >= minimum_modifier_level && t.item_level <= start_state.item_level
+                })
+                .collect();
+
+            // Keep at least one tier per modifier family: if all tiers were
+            // filtered out, fall back to the highest available tier
+            if eligible_tiers.is_empty() {
+                if let Some(fallback) = md
+                    .tiers
+                    .iter()
+                    .filter(|t| t.item_level <= start_state.item_level)
+                    .min_by_key(|t| t.tier)
+                {
+                    eligible_tiers = vec![fallback];
+                }
             }
 
+            eligible_tiers.into_iter().map(move |t| (md, t))
+        })
+        .filter_map(|(md, t)| {
             if matches!(md.affix, Affix::Prefix) && prefix_count >= 3
                 || matches!(md.affix, Affix::Suffix) && suffix_count >= 3
             {
