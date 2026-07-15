@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs::File, path::Path};
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum ModifierFamily {
     Abyss4AdditionalChance,
     AbyssAdditionalChance,

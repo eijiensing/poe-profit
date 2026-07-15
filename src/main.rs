@@ -25,8 +25,6 @@ fn main() {
         .find(|md| md.name == "+# to Spirit" && md.affix == Affix::Prefix)
         .unwrap();
 
-    println!("{:#?}", vile_robe);
-
     let my_vile_robe = CraftedItem {
         item_level: 82,
         base_item_id: vile_robe.id,

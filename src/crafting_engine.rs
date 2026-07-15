@@ -1,4 +1,4 @@
-use crate::importer::{Affix, BaseItemId, ModifierDefinition, ModifierId, PoeData, Socketable};
+use crate::importer::{Affix, BaseItemId, ModifierId, ModifierType, PoeData, Socketable};
 
 pub struct RolledModifier {
     pub modifier_id: ModifierId,
@@ -74,6 +74,8 @@ pub fn possible_next_states(
     let possible_modifiers = base_item
         .modifier_definitions
         .iter()
+        .filter(|md| matches!(md.modifier_type, ModifierType::Base))
+        .filter(|md| matches!(md.affix, Affix::Prefix | Affix::Suffix))
         .flat_map(|md| {
             let mut eligible_tiers: Vec<_> = md
                 .tiers
