@@ -15,6 +15,12 @@ pub enum Currency {
     OrbOfTransmutation,
     GreaterOrbOfTransmutation,
     PerfectOrbOfTransmutation,
+    OrbOfAugmentation,
+    GreaterOrbOfAugmentation,
+    PerfectOrbOfAugmentation,
+    ExaltedOrb,
+    GreaterExaltedOrb,
+    PerfectExaltedOrb,
 }
 
 pub enum Omen {}
@@ -54,6 +60,12 @@ pub fn possible_next_states(
         Currency::OrbOfTransmutation => 0,
         Currency::GreaterOrbOfTransmutation => 44,
         Currency::PerfectOrbOfTransmutation => 70,
+        Currency::OrbOfAugmentation => 0,
+        Currency::GreaterOrbOfAugmentation => 44,
+        Currency::PerfectOrbOfAugmentation => 70,
+        Currency::ExaltedOrb => 0,
+        Currency::GreaterExaltedOrb => 35,
+        Currency::PerfectExaltedOrb => 50,
     };
 
     let (prefix_count, suffix_count) = start_state.modifiers.iter().fold((0, 0), |acc, m| {
