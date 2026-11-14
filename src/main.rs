@@ -1,6 +1,6 @@
 use crate::{
     crafting_engine::{
-        CraftedItem, CraftingOperation, Currency, ItemState, RolledModifier, possible_next_states,
+        CraftedItem, CraftingStep, Currency, ItemState, RolledModifier, possible_next_states,
     },
     importer::{Affix, load_poe_data_cached},
 };
@@ -45,7 +45,7 @@ fn main() {
             sockets: vec![],
             probability: 100f64,
         },
-        CraftingOperation {
+        CraftingStep {
             currency: Currency::PerfectOrbOfTransmutation,
             omens: vec![],
         },
